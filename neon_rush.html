@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#050510;font-family:monospace;overflow:hidden;user-select:none;touch-action:none}
+canvas{display:block}
+#ui{position:absolute;top:0;left:0;width:100%;pointer-events:none}
+#hud{display:flex;justify-content:space-between;padding:14px 18px;color:#fff;font-size:13px;letter-spacing:1px}
+.hud-val{color:#b48cff;font-size:16px;font-weight:bold}
+#lives{display:flex;gap:5px;align-items:center}
+.life{width:10px;height:10px;background:#ff4fa3;border-radius:50%;box-shadow:0 0 6px #ff4fa3}
+.life.lost{background:#333;box-shadow:none}
+#screen{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;pointer-events:all;padding:20px}
+#screen.hidden{display:none}
+.title{font-size:36px;font-weight:bold;letter-spacing:6px;color:#b48cff;text-shadow:0 0 20px #7744ff,0 0 40px #7744ff;margin-bottom:8px}
+.subtitle{font-size:11px;letter-spacing:3px;color:#8877cc;margin-bottom:28px}
+.score-display{font-size:14px;color:#aaa;margin-bottom:6px;letter-spacing:2px}
+.big-score{font-size:48px;font-weight:bold;color:#b48cff;margin-bottom:20px}
+.btn{background:transparent;border:1.5px solid #b48cff;color:#b48cff;padding:12px 40px;font-size:13px;letter-spacing:3px;font-family:monospace;cursor:pointer;border-radius:2px;transition:all .15s;margin-bottom:10px}
+.btn:hover{background:#b48cff22;box-shadow:0 0 15px #7744ff44}
+.btn-sm{padding:8px 22px;font-size:11px;letter-spacing:2px;border-color:#554488;color:#8866cc}
+.instructions{margin-top:18px;font-size:11px;color:#665588;letter-spacing:1px;line-height:2}
+#combo-flash{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:22px;font-weight:bold;color:#ffeb3b;letter-spacing:3px;opacity:0;pointer-events:none;transition:opacity .3s}
+#charge-bar{position:absolute;bottom:70px;left:50%;transform:translateX(-50%);width:120px;height:4px;background:#ffffff18;border-radius:2px;overflow:hidden;pointer-events:none}
+#charge-fill{height:100%;width:0%;background:#ff4fa3;transition:width .05s}
+/* Name input overlay */
+#name-screen{position:absolute;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;background:#050510ee;pointer-events:all;padding:20px}
+#name-screen.show{display:flex}
+#name-input{background:transparent;border:none;border-bottom:1.5px solid #b48cff;color:#b48cff;font-size:22px;font-family:monospace;letter-spacing:4px;text-align:center;outline:none;width:180px;margin:16px 0 24px;padding:6px 0;text-transform:uppercase}
+/* Leaderboard panel */
+#lb-panel{position:absolute;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;align-items:center;color:#fff;pointer-events:all;padding:20px;overflow-y:auto}
+#lb-panel.show{display:flex}
+#lb-list{width:100%;max-width:360px;margin-top:16px}
+.lb-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:0.5px solid #1a1035;font-size:13px;letter-spacing:1px}
+.lb-row.me{background:#b48cff18;border-radius:4px}
+.lb-rank{width:28px;color:#554488;font-size:11px;text-align:right}
+.lb-rank.top{color:#ffe066}
+.lb-name{flex:1;color:#ccc;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-score{color:#b48cff;font-weight:bold}
+.lb-loading{color:#554488;font-size:12px;letter-spacing:2px;margin-top:30px}
+.lb-tabs{display:flex;gap:10px;margin-bottom:4px}
+.lb-tab{background:transparent;border:0.5px solid #332255;color:#665588;padding:6px 16px;font-size:11px;letter-spacing:2px;font-family:monospace;cursor:pointer;border-radius:2px}
+.lb-tab.active{border-color:#b48cff;color:#b48cff}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div id="hud">
+    <div>
+      <div style="color:#665588;font-size:10px;letter-spacing:2px;margin-bottom:2px">SCORE</div>
+      <div class="hud-val" id="score-hud">0</div>
+    </div>
+    <div style="text-align:center">
+      <div style="color:#665588;font-size:10px;letter-spacing:2px;margin-bottom:2px">COMBO</div>
+      <div class="hud-val" id="combo-hud">x1</div>
+    </div>
+    <div id="lives"></div>
+  </div>
+</div>
+
+<!-- Main menu / game over -->
+<div id="screen">
+  <div class="title">NEON RUSH</div>
+  <div class="subtitle">SURVIVE THE TUNNEL</div>
+  <div class="score-display" id="score-label" style="display:none">YOUR SCORE</div>
+  <div class="big-score" id="final-score" style="display:none">0</div>
+  <button class="btn" id="start-btn">TAP TO PLAY</button>
+  <button class="btn btn-sm" id="lb-btn">LEADERBOARD</button>
+  <div class="instructions" id="instr">TAP LEFT / RIGHT TO DODGE<br>HOLD TO CHARGE BLAST</div>
+</div>
+
+<!-- Name entry -->
+<div id="name-screen">
+  <div style="font-size:11px;letter-spacing:3px;color:#8877cc;margin-bottom:4px">NEW HIGH SCORE!</div>
+  <div style="font-size:38px;font-weight:bold;color:#b48cff;margin-bottom:4px" id="ns-score">0</div>
+  <div style="font-size:11px;letter-spacing:2px;color:#665588;margin-bottom:0">ENTER YOUR NAME</div>
+  <input id="name-input" maxlength="10" placeholder="PLAYER" autocomplete="off" spellcheck="false"/>
+  <button class="btn" id="submit-btn">SUBMIT SCORE</button>
+  <button class="btn btn-sm" id="skip-btn">SKIP</button>
+</div>
+
+<!-- Leaderboard -->
+<div id="lb-panel">
+  <div class="title" style="font-size:22px;letter-spacing:4px;margin-bottom:2px">LEADERBOARD</div>
+  <div class="subtitle" style="margin-bottom:12px">GLOBAL RANKINGS</div>
+  <div class="lb-tabs">
+    <button class="lb-tab active" id="tab-all">ALL TIME</button>
+    <button class="lb-tab" id="tab-today">TODAY</button>
+  </div>
+  <div id="lb-list"><div class="lb-loading" id="lb-loading">LOADING...</div></div>
+  <button class="btn btn-sm" style="margin-top:20px" id="lb-close">BACK</button>
+</div>
+
+<div id="combo-flash"></div>
+<div id="charge-bar"><div id="charge-fill"></div></div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight}
+resize();
+window.addEventListener('resize', resize);
+
+let state='menu', score=0, lives=3, combo=1, frame=0, speed=3.5, charge=0, holding=false;
+let ship, walls=[], particles=[], blasts=[], enemies=[], stars=[];
+let localBest = 0;
+let myName = localStorage.getItem('neon_name') || '';
+let lbTab = 'all';
+
+// ── Storage helpers ──────────────────────────────────────────────────────────
+const SCORE_KEY = 'neon_scores';
+const today = () => new Date().toISOString().slice(0,10);
+
+async function saveScore(name, sc){
+  try {
+    const raw = await window.storage.get(SCORE_KEY, true);
+    const list = raw ? JSON.parse(raw.value) : [];
+    list.push({name: name.toUpperCase().slice(0,10), score: sc, date: today(), ts: Date.now()});
+    list.sort((a,b)=>b.score-a.score);
+    const trimmed = list.slice(0,200);
+    await window.storage.set(SCORE_KEY, JSON.stringify(trimmed), true);
+    return trimmed;
+  } catch(e){ return []; }
+}
+
+async function getScores(){
+  try {
+    const raw = await window.storage.get(SCORE_KEY, true);
+    return raw ? JSON.parse(raw.value) : [];
+  } catch(e){ return []; }
+}
+
+// ── Leaderboard UI ───────────────────────────────────────────────────────────
+async function showLeaderboard(myScore){
+  document.getElementById('lb-panel').classList.add('show');
+  renderLBData(myScore);
+}
+
+async function renderLBData(myScore){
+  const list = await getScores();
+  const lb = document.getElementById('lb-list');
+  const filtered = lbTab==='today' ? list.filter(e=>e.date===today()) : list;
+  if(!filtered.length){lb.innerHTML='<div class="lb-loading">NO SCORES YET</div>';return;}
+  const top = filtered.slice(0,50);
+  lb.innerHTML = top.map((e,i)=>{
+    const isMe = myScore && e.score===myScore && e.name===myName.toUpperCase();
+    return `<div class="lb-row${isMe?' me':''}">
+      <span class="lb-rank${i<3?' top':''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)}</span>
+      <span class="lb-name">${e.name}</span>
+      <span class="lb-score">${e.score.toLocaleString()}</span>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('lb-btn').addEventListener('click',()=>{
+  document.getElementById('screen').classList.add('hidden');
+  showLeaderboard(null);
+});
+document.getElementById('lb-close').addEventListener('click',()=>{
+  document.getElementById('lb-panel').classList.remove('show');
+  document.getElementById('screen').classList.remove('hidden');
+});
+document.getElementById('tab-all').addEventListener('click',()=>{
+  lbTab='all';
+  document.getElementById('tab-all').classList.add('active');
+  document.getElementById('tab-today').classList.remove('active');
+  renderLBData(null);
+});
+document.getElementById('tab-today').addEventListener('click',()=>{
+  lbTab='today';
+  document.getElementById('tab-today').classList.add('active');
+  document.getElementById('tab-all').classList.remove('active');
+  renderLBData(null);
+});
+
+// ── Name entry ───────────────────────────────────────────────────────────────
+function showNameEntry(sc){
+  document.getElementById('ns-score').textContent = sc.toLocaleString();
+  const inp = document.getElementById('name-input');
+  inp.value = myName;
+  document.getElementById('name-screen').classList.add('show');
+  inp.focus();
+}
+
+document.getElementById('name-input').addEventListener('input', e=>{
+  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+});
+
+document.getElementById('submit-btn').addEventListener('click', async ()=>{
+  const nm = document.getElementById('name-input').value.trim() || 'ANON';
+  myName = nm;
+  localStorage.setItem('neon_name', nm);
+  document.getElementById('name-screen').classList.remove('show');
+  await saveScore(nm, score);
+  showGameOver();
+  showLeaderboard(score);
+});
+
+document.getElementById('skip-btn').addEventListener('click',()=>{
+  document.getElementById('name-screen').classList.remove('show');
+  showGameOver();
+});
+
+function showGameOver(){
+  state='over';
+  const scr=document.getElementById('screen');
+  scr.classList.remove('hidden');
+  document.querySelector('.title').textContent='GAME OVER';
+  document.querySelector('.subtitle').textContent='YOU DIED IN THE TUNNEL';
+  document.getElementById('score-label').style.display='block';
+  document.getElementById('final-score').style.display='block';
+  document.getElementById('final-score').textContent=score.toLocaleString();
+  document.getElementById('start-btn').textContent='PLAY AGAIN';
+  document.getElementById('instr').innerHTML='BEST: '+(localBest||score).toLocaleString();
+}
+
+// ── Game logic ───────────────────────────────────────────────────────────────
+function initStars(){
+  stars=[];
+  for(let i=0;i<80;i++) stars.push({x:Math.random()*W,y:Math.random()*H,s:Math.random()*1.5+.3,v:Math.random()*.5+.2});
+}
+
+function initGame(){
+  score=0;lives=3;combo=1;frame=0;speed=3.5;charge=0;holding=false;
+  ship={x:W/2,y:H*.78,w:22,h:32,vx:0,glow:0,hit:0,blasting:false};
+  walls=[];particles=[];blasts=[];enemies=[];
+  renderLives();
+  document.getElementById('charge-fill').style.width='0%';
+  initStars();
+}
+
+function renderLives(){
+  const el=document.getElementById('lives');el.innerHTML='';
+  for(let i=0;i<3;i++){const d=document.createElement('div');d.className='life'+(i>=lives?' lost':'');el.appendChild(d);}
+}
+
+function spawnWall(){
+  const gap=W*.44-Math.min(frame*.015,W*.1);
+  const gx=Math.random()*(W-gap-80)+40;
+  walls.push({x:gx,y:-30,w1:gx,w2:gx+gap,h:28,speed});
+}
+
+function spawnEnemy(){
+  if(frame<200) return;
+  const x=Math.random()*(W-80)+40;
+  enemies.push({x,y:-20,r:12,vx:(Math.random()-.5)*2,vy:speed*.7,hp:1,glow:0});
+}
+
+function emitParticles(x,y,col,n=8){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2,spd=Math.random()*4+1;
+    particles.push({x,y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,life:1,col,r:Math.random()*3+1});
+  }
+}
+
+function fireBlast(){
+  if(charge<.6) return;
+  blasts.push({x:ship.x,y:ship.y-20,r:charge>1?14:8,life:1,power:charge});
+  charge=0;ship.blasting=true;
+  setTimeout(()=>{ship.blasting=false},200);
+  emitParticles(ship.x,ship.y,'#ff4fa3',14);
+}
+
+function showCombo(){
+  const el=document.getElementById('combo-flash');
+  el.textContent='COMBO x'+combo+'!';el.style.opacity=1;
+  setTimeout(()=>el.style.opacity=0,600);
+}
+
+function update(){
+  frame++;speed=3.5+frame*.004;
+  if(frame%Math.max(50-Math.floor(frame/100),18)===0) spawnWall();
+  if(frame%Math.max(120-Math.floor(frame/80),45)===0) spawnEnemy();
+  stars.forEach(s=>{s.y+=s.v*(speed/3.5);if(s.y>H){s.y=0;s.x=Math.random()*W}});
+  ship.x+=ship.vx;ship.vx*=.88;
+  ship.x=Math.max(24,Math.min(W-24,ship.x));
+  if(ship.hit>0) ship.hit--;
+  if(ship.glow>0) ship.glow--;
+  if(holding) charge=Math.min(charge+.025,1.2);
+  document.getElementById('charge-fill').style.width=(charge/1.2*100)+'%';
+  walls.forEach(w=>w.y+=w.speed);
+  walls=walls.filter(w=>w.y<H+40);
+  blasts.forEach(b=>{b.y-=10;b.life-=.04});
+  blasts=blasts.filter(b=>b.life>0&&b.y>-50);
+  enemies.forEach(e=>{
+    e.y+=e.vy;e.x+=e.vx;
+    if(e.x<20||e.x>W-20) e.vx*=-1;
+    if(e.glow>0) e.glow--;
+    blasts.forEach(b=>{
+      const dx=b.x-e.x,dy=b.y-e.y;
+      if(Math.sqrt(dx*dx+dy*dy)<b.r+e.r+b.power*8){
+        e.hp=0;b.life=0;score+=50*combo;combo++;
+        document.getElementById('combo-hud').textContent='x'+combo;
+        if(combo>2) showCombo();
+        emitParticles(e.x,e.y,'#ffe066',12);ship.glow=20;
+      }
+    });
+  });
+  enemies=enemies.filter(e=>e.hp>0&&e.y<H+30);
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.15;p.life-=.03;p.r*=.97});
+  particles=particles.filter(p=>p.life>0);
+  if(ship.hit===0){
+    walls.forEach(w=>{
+      const sy=ship.y,sx=ship.x;
+      if(sy+14>w.y-w.h/2&&sy-14<w.y+w.h/2){
+        if(sx-10<w.w1||sx+10>w.w2){hit();emitParticles(sx,sy,'#ff4fa3',10);}
+        else if(sy>w.y+w.h/2-3&&!w.scored){w.scored=true;score+=10*combo;document.getElementById('score-hud').textContent=score;combo=Math.min(combo+1,10);document.getElementById('combo-hud').textContent='x'+combo;}
+      }
+    });
+    enemies.forEach(e=>{
+      const dx=ship.x-e.x,dy=ship.y-e.y;
+      if(Math.sqrt(dx*dx+dy*dy)<e.r+14){e.hp=0;hit();emitParticles(e.x,e.y,'#ffe066',8);}
+    });
+  }
+  document.getElementById('score-hud').textContent=score;
+}
+
+function hit(){
+  if(ship.hit>0) return;
+  lives--;combo=1;document.getElementById('combo-hud').textContent='x1';
+  ship.hit=90;renderLives();
+  if(lives<=0){endGame();return;}
+  emitParticles(ship.x,ship.y,'#ff4fa3',16);
+}
+
+function endGame(){
+  state='over';
+  const isNew = score > localBest;
+  if(isNew) localBest = score;
+  if(isNew && score > 0){
+    showNameEntry(score);
+  } else {
+    showGameOver();
+  }
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#050510';ctx.fillRect(0,0,W,H);
+  ctx.globalAlpha=.5;
+  stars.forEach(s=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(s.x,s.y,s.s,0,Math.PI*2);ctx.fill();});
+  ctx.globalAlpha=1;
+  const tg=ctx.createLinearGradient(0,0,W,0);
+  tg.addColorStop(0,'#b48cff22');tg.addColorStop(.5,'transparent');tg.addColorStop(1,'#b48cff22');
+  ctx.fillStyle=tg;ctx.fillRect(0,0,W,H);
+  walls.forEach(w=>{
+    ctx.save();ctx.shadowColor='#7744ff';ctx.shadowBlur=18;
+    ctx.fillStyle='#3322aa';ctx.fillRect(0,w.y-w.h/2,w.w1,w.h);
+    ctx.fillStyle='#b48cff';ctx.fillRect(w.w1-3,w.y-w.h/2,3,w.h);
+    ctx.fillStyle='#3322aa';ctx.fillRect(w.w2,w.y-w.h/2,W-w.w2,w.h);
+    ctx.fillStyle='#b48cff';ctx.fillRect(w.w2,w.y-w.h/2,3,w.h);
+    ctx.restore();
+  });
+  blasts.forEach(b=>{
+    ctx.save();ctx.globalAlpha=b.life;ctx.shadowColor='#ff4fa3';ctx.shadowBlur=25;
+    ctx.fillStyle='#ff4fa3';ctx.beginPath();ctx.arc(b.x,b.y,b.r+b.power*10*(1-b.life*.5),0,Math.PI*2);ctx.fill();ctx.restore();
+  });
+  enemies.forEach(e=>{
+    ctx.save();ctx.shadowColor='#ffe066';ctx.shadowBlur=e.glow?22:12;
+    ctx.fillStyle='#ffe066';ctx.beginPath();ctx.moveTo(e.x,e.y-e.r);
+    for(let i=0;i<5;i++){
+      const a1=i/5*Math.PI*2-Math.PI/2,a2=(i+.5)/5*Math.PI*2-Math.PI/2;
+      ctx.lineTo(e.x+Math.cos(a1)*e.r,e.y+Math.sin(a1)*e.r);
+      ctx.lineTo(e.x+Math.cos(a2)*e.r*.5,e.y+Math.sin(a2)*e.r*.5);
+    }
+    ctx.closePath();ctx.fill();ctx.restore();
+  });
+  particles.forEach(p=>{ctx.globalAlpha=p.life;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();});
+  ctx.globalAlpha=1;
+  if(ship.hit===0||Math.floor(ship.hit/6)%2===0){
+    ctx.save();
+    ctx.shadowColor=ship.blasting?'#ffe066':'#7744ff';ctx.shadowBlur=ship.glow?30:14+(ship.blasting?20:0);
+    ctx.fillStyle=ship.blasting?'#ffe066':'#c8a8ff';
+    ctx.beginPath();ctx.moveTo(ship.x,ship.y-ship.h/2);ctx.lineTo(ship.x-ship.w/2,ship.y+ship.h/2);
+    ctx.lineTo(ship.x,ship.y+ship.h/3);ctx.lineTo(ship.x+ship.w/2,ship.y+ship.h/2);
+    ctx.closePath();ctx.fill();
+    ctx.fillStyle='#ff4fa3';ctx.beginPath();ctx.ellipse(ship.x,ship.y+ship.h/2,ship.w/4,5+Math.random()*4,0,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+}
+
+function loop(){
+  if(state==='playing'){update();draw();}
+  else{
+    stars.forEach(s=>{s.y+=s.v*.5;if(s.y>H){s.y=0;s.x=Math.random()*W}});
+    ctx.clearRect(0,0,W,H);ctx.fillStyle='#050510';ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha=.4;
+    stars.forEach(s=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(s.x,s.y,s.s,0,Math.PI*2);ctx.fill();});
+    ctx.globalAlpha=1;
+  }
+  requestAnimationFrame(loop);
+}
+
+// Controls
+document.addEventListener('keydown',e=>{
+  if(state!=='playing') return;
+  if(e.key==='ArrowLeft'||e.key==='a') ship.vx-=7;
+  if(e.key==='ArrowRight'||e.key==='d') ship.vx+=7;
+  if(e.key===' '){e.preventDefault();holding=true;}
+});
+document.addEventListener('keyup',e=>{if(e.key===' '){fireBlast();holding=false;}});
+let touchStartX=null;
+canvas.addEventListener('touchstart',e=>{if(state!=='playing') return;e.preventDefault();touchStartX=e.touches[0].clientX;holding=true;},{passive:false});
+canvas.addEventListener('touchmove',e=>{if(state!=='playing') return;e.preventDefault();const dx=e.touches[0].clientX-touchStartX;ship.vx=dx*.18;touchStartX=e.touches[0].clientX;},{passive:false});
+canvas.addEventListener('touchend',e=>{if(state!=='playing') return;fireBlast();holding=false;ship.vx=0;});
+
+document.getElementById('start-btn').addEventListener('click',()=>{
+  state='playing';initGame();
+  document.getElementById('screen').classList.add('hidden');
+  document.getElementById('lb-panel').classList.remove('show');
+  document.querySelector('.title').textContent='NEON RUSH';
+  document.querySelector('.subtitle').textContent='SURVIVE THE TUNNEL';
+  document.getElementById('score-label').style.display='none';
+  document.getElementById('final-score').style.display='none';
+  document.getElementById('instr').innerHTML='TAP LEFT / RIGHT TO DODGE<br>HOLD TO CHARGE BLAST';
+  document.getElementById('start-btn').textContent='TAP TO PLAY';
+});
+
+initStars();loop();
+</script>
+</body>
+</html>
